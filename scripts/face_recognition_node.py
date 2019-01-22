@@ -43,6 +43,7 @@ def name_controller(req):
 class ImageReader:
     def __init__(self):
         self.bridge = CvBridge()
+        self.box_pub = rospy.Publisher("/faces/box_info", Box, queue_size=1 )
         self.image_sub = rospy.Subscriber(config.image_topic, Image, self.process)
 
         self.faces = []
@@ -62,16 +63,13 @@ class ImageReader:
             self.image_shape = image.shape[:2]
 
             original = image.copy()
-
             if self.frame_limit % config.skip_frames == 0:
                 self.frame_limit = 0
-                # Detecting face positions
+                rospy.loginfo("Detecting face positions")
                 self.face_positions = face_api.detect_faces(image, min_score=config.detection_score,
                                                             max_idx=config.detection_idx)
             self.frame_limit += 1
-
             if len(self.face_positions) > len(self.detected_faces):
-                # Make the list empty
                 self.detected_faces = []
 
                 # Compute the 128D vector that describes the face in img identified by
@@ -79,7 +77,7 @@ class ImageReader:
                 encodings = face_api.face_descriptor(image, self.face_positions)
 
                 for face_position, encoding in zip(self.face_positions, encodings):
-                    # Create object from face_position.
+                    rospy.loginfo("Create object from face_position.")
                     face = face_api.Face(face_position[0], tracker_timeout=config.tracker_timeout)
 
                     predicted_id = classifier.predict(encoding)
@@ -98,7 +96,6 @@ class ImageReader:
                         face_map[face.details["id"]]["size"] += 1
 
                         classifier.add_pair(encoding, face.details["id"])
-
                         face_path = os.path.join(_face_dir, face.details["id"])
                         if not os.path.exists(face_path):
                             os.mkdir(face_path)
@@ -115,6 +112,7 @@ class ImageReader:
                                                                        face.details["name"],
                                                                        face.details["gender"],
                                                                        face_position[1]))
+                    self.box_pub.publish(self.box_generate(face))
 
                     self.detected_faces.append(face)
             else:
@@ -142,16 +140,7 @@ class ImageReader:
         image_h, image_w = self.image_shape
         boxes = []
         for face in self.detected_faces:
-            box = Box()
-            box.x = face.rect.left() / float(image_w)
-            box.y = face.rect.top() / float(image_h)
-            box.w = face.rect.width() / float(image_w)
-            box.h = face.rect.height() / float(image_h)
-            box.gender = face.details["gender"]
-            box.label = face.details["id"]
-            box.name = face.details["name"]
-            boxes.append(box)
-
+            boxes.append(self.box_generate(face))
         response = FaceResponse(boxes)
         return response
 
@@ -162,7 +151,6 @@ class ImageReader:
                                           max_idx=config.detection_idx)
         encodings = face_api.face_descriptor(image, positions)
 
-        image_h, image_w = self.image_shape
         boxes = []
 
         for face_position, encoding in zip(self.face_positions, encodings):
@@ -191,18 +179,21 @@ class ImageReader:
                 with open(os.path.join(face_path, "{}.dump".format(int(time.time()))), 'wb') as fp:
                     pickle.dump(encoding, fp)
 
-            box = Box()
-            box.x = face.rect.left() / float(image_w)
-            box.y = face.rect.top() / float(image_h)
-            box.w = face.rect.width() / float(image_w)
-            box.h = face.rect.height() / float(image_h)
-            box.gender = face.details["gender"]
-            box.label = face.details["id"]
-            box.name = face.details["name"]
-            boxes.append(box)
-
+            boxes.append(self.box_generate(face))
         response = DetectResponse(boxes)
         return response
+
+    def box_generate(self, face):
+        image_h, image_w = self.image_shape
+        box = Box()
+        box.x = face.rect.left() / float(image_w)
+        box.y = face.rect.top() / float(image_h)
+        box.w = face.rect.width() / float(image_w)
+        box.h = face.rect.height() / float(image_h)
+        box.gender = face.details["gender"]
+        box.label = face.details["id"]
+        box.name = face.details["name"]
+        return box
 
 
 def main():

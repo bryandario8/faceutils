@@ -26,4 +26,6 @@ generate_messages(
   sensor_msgs
 )
 
-catkin_package()
+catkin_package(
+  CATKIN_DEPENDS rospy std_msgs message_runtime
+)
