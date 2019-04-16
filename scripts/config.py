@@ -30,7 +30,7 @@ skip_frames = 2
 topic_name = "ros_face_recognition"
 
 # ROS topic that contains video stream.
-image_topic = "/usb_cam/image_raw"
+image_topic = "/mashi_ros/image_topic"
 
 # Tracker quality of each face.
 face_tracker_quality = 8
